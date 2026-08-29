@@ -1,11 +1,13 @@
 const DATA = "data/";
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const MONTHS_FULL = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
 let state = {
   scope: "stadt",
   city: null,
   bundesland: null,
   range: "7d",
+  month: null, // null = aktueller Monat
   customFrom: null,
   customTo: null,
 };
@@ -71,14 +73,28 @@ function nYearRange(end, n) {
   return [yearsAgoPlus1(end, n), end];
 }
 
-function presetBounds(kind, last) {
+// monthIndex 0-11, oder null/undefined = aktueller Monat der letzten Datenperiode.
+// Liegt der gewaehlte Monat im laufenden Jahr noch in der Zukunft, wird das Vorjahr
+// genommen (letzte abgeschlossene Ausgabe dieses Monats); der aktuelle Monat selbst
+// laeuft nur bis "last" (zum-Datum), alle anderen Monate sind vollstaendig.
+function monthBounds(monthIndex, last) {
+  if (monthIndex === null || monthIndex === undefined) monthIndex = last.getUTCMonth();
+  let year = last.getUTCFullYear();
+  if (monthIndex > last.getUTCMonth()) year -= 1;
+  const start = new Date(Date.UTC(year, monthIndex, 1));
+  const isCurrent = monthIndex === last.getUTCMonth() && year === last.getUTCFullYear();
+  const end = isCurrent ? last : new Date(Date.UTC(year, monthIndex + 1, 0));
+  return [start, end];
+}
+
+function presetBounds(kind, last, monthIndex) {
   switch (kind) {
     case "week": {
       const dow = last.getUTCDay() || 7; // Sun=0 -> 7
       return [addDays(last, -(dow - 1)), last];
     }
     case "month":
-      return [new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1)), last];
+      return monthBounds(monthIndex, last);
     case "halfyear": {
       const half = last.getUTCMonth() < 6 ? 0 : 6;
       return [new Date(Date.UTC(last.getUTCFullYear(), half, 1)), last];
@@ -112,7 +128,7 @@ function rangeDates() {
       return [parseYMD(state.customFrom), parseYMD(state.customTo)];
     }
     default:
-      return presetBounds(state.range, last);
+      return presetBounds(state.range, last, state.month);
   }
 }
 
@@ -230,7 +246,9 @@ function render() {
 
     const fromStr = from.toLocaleDateString("de-DE");
     const toStr = to.toLocaleDateString("de-DE");
-    const prefix = state.range === "season" ? seasonName(to) + " · " : "";
+    const prefix = state.range === "season" ? seasonName(to) + " · "
+      : state.range === "month" ? `${MONTHS_FULL[from.getUTCMonth()]} ${from.getUTCFullYear()} · `
+      : "";
     rangeText = `${prefix}${fromStr} – ${toStr}`;
   }
 
@@ -289,7 +307,7 @@ function bucketLabel(type, i) {
   return `${names[type] || "#"} ${i + 1}`;
 }
 
-let compareState = { kind: "month", years: 5, extra: new Set() };
+let compareState = { kind: "month", years: 5, month: null, extra: new Set() };
 let compareChart;
 const MAX_EXTRA = 20;
 
@@ -308,7 +326,7 @@ function periodForOffset(kind, offsetUnits) {
     const n = clampYears(compareState.years);
     return nYearRange(shiftYears(last, offsetUnits * n), n);
   }
-  const base = presetBounds(kind, last);
+  const base = presetBounds(kind, last, kind === "month" ? compareState.month : undefined);
   return [shiftYears(base[0], offsetUnits), shiftYears(base[1], offsetUnits)];
 }
 
@@ -334,7 +352,11 @@ function compareSeriesLabels() {
     const n = clampYears(compareState.years);
     return [`Letzte ${n} Jahre`, `Die ${n} Jahre davor`];
   }
-  const names = { month: "Monat", season: "Saison", year: "Jahr" };
+  if (compareState.kind === "month") {
+    const name = MONTHS_FULL[compareState.month ?? lastDate().getUTCMonth()];
+    return [`${name} aktuell`, `${name} Vorjahr`];
+  }
+  const names = { season: "Saison", year: "Jahr" };
   return [`${names[compareState.kind]} aktuell`, `${names[compareState.kind]} Vorjahr`];
 }
 
@@ -558,6 +580,7 @@ function setupCompareControls() {
   const yearsInput = document.getElementById("cmpYears");
   const extraToggle = document.getElementById("cmpExtraToggle");
   const extraPanel = document.getElementById("cmpExtraPanel");
+  const cmpMonthSel = document.getElementById("cmpMonthSelect");
 
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -566,6 +589,7 @@ function setupCompareControls() {
       compareState.kind = btn.dataset.cmp;
       compareState.extra.clear();
       yearsWrap.classList.toggle("hidden", compareState.kind !== "nyears");
+      cmpMonthSel.classList.toggle("hidden", compareState.kind !== "month");
       renderCompare();
     });
   });
@@ -573,6 +597,11 @@ function setupCompareControls() {
   yearsInput.addEventListener("input", () => {
     compareState.years = clampYears(yearsInput.value);
     compareState.extra.clear();
+    renderCompare();
+  });
+
+  cmpMonthSel.addEventListener("change", () => {
+    compareState.month = parseInt(cmpMonthSel.value, 10);
     renderCompare();
   });
 
@@ -624,6 +653,7 @@ function setupControls() {
   const rangeButtons = document.querySelectorAll(".ranges button");
   const fromInput = document.getElementById("fromDate");
   const toInput = document.getElementById("toDate");
+  const monthSel = document.getElementById("monthSelect");
 
   scopeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -645,8 +675,14 @@ function setupControls() {
       rangeButtons.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.range = btn.dataset.range;
+      monthSel.classList.toggle("hidden", state.range !== "month");
       render();
     });
+  });
+
+  monthSel.addEventListener("change", () => {
+    state.month = parseInt(monthSel.value, 10);
+    render();
   });
 
   [fromInput, toInput].forEach((el) => {
@@ -688,6 +724,18 @@ function populateSelects() {
   document.getElementById("fromDate").min = minD;
   document.getElementById("toDate").max = maxD;
   document.getElementById("toDate").min = minD;
+
+  const currentMonth = lastDate().getUTCMonth();
+  ["monthSelect", "cmpMonthSelect"].forEach((id) => {
+    const sel = document.getElementById(id);
+    MONTHS_FULL.forEach((name, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.value = currentMonth;
+  });
 }
 
 async function init() {
