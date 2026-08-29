@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Niederschlag Deutschland</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Niederschlag Deutschland</h1>
+    <div class="sub" id="footerInfoTop">Daten des Deutschen Wetterdienstes (DWD Open Data)</div>
+
+    <div class="controls">
+      <div class="scope-toggle">
+        <button data-scope="stadt" class="active">Stadt</button>
+        <button data-scope="bundesland">Bundesland</button>
+        <button data-scope="deutschland">Deutschland</button>
+      </div>
+      <select id="citySelect"></select>
+      <select id="landSelect" class="hidden"></select>
+    </div>
+
+    <div class="ranges">
+      <button data-range="24h">24 Stunden</button>
+      <button data-range="7d" class="active">7 Tage</button>
+      <button data-range="week">Woche</button>
+      <button data-range="month">Monat</button>
+      <button data-range="halfyear">Halbjahr</button>
+      <button data-range="season">Jahreszeit</button>
+      <button data-range="year">Jahr</button>
+      <button data-range="decade">Jahrzehnt</button>
+    </div>
+    <div class="custom-range">
+      oder Zeitraum:
+      <input type="date" id="fromDate" />
+      –
+      <input type="date" id="toDate" />
+    </div>
+
+    <div class="stat">
+      <div class="value" id="statValue">–</div>
+      <div class="unit">mm</div>
+    </div>
+    <div class="stat-label" id="statLabel"></div>
+
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="info-row">
+      <span id="infoStations"></span>
+      <span id="infoRange"></span>
+    </div>
+
+    <footer id="footerInfo"></footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
