@@ -53,6 +53,38 @@
       <span id="infoRange"></span>
     </div>
 
+    <h2>Vergleich</h2>
+    <div class="ranges cmp-ranges">
+      <button data-cmp="month" class="active">Monat vs. Vorjahr</button>
+      <button data-cmp="year">Jahr vs. Vorjahr</button>
+      <button data-cmp="season">Saison vs. Vorjahr</button>
+      <button data-cmp="decade">Jahrzehnt vs. Vorjahrzehnt</button>
+      <button data-cmp="nyears">Zeitraum frei</button>
+    </div>
+    <div class="cmp-years hidden" id="cmpYearsWrap">
+      Anzahl Jahre: <input type="number" id="cmpYears" min="1" max="15" value="5" />
+      vs. die gleiche Anzahl Jahre davor
+    </div>
+
+    <div class="cmp-stats">
+      <div class="cmp-stat">
+        <div class="value" id="cmpCurrentValue">–</div>
+        <div class="unit">mm</div>
+        <div class="cmp-label" id="cmpCurrentLabel"></div>
+      </div>
+      <div class="cmp-delta" id="cmpDelta">–</div>
+      <div class="cmp-stat">
+        <div class="value" id="cmpPriorValue">–</div>
+        <div class="unit">mm</div>
+        <div class="cmp-label" id="cmpPriorLabel"></div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <canvas id="compareChart"></canvas>
+    </div>
+    <div class="coverage-note hidden" id="cmpCoverageNote"></div>
+
     <footer id="footerInfo"></footer>
   </div>
 

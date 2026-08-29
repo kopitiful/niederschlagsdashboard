@@ -37,7 +37,7 @@ RECENT_ZIP_TMPL = f"{BASE}/recent/stundenwerte_RR_{{sid}}_akt.zip"
 HIST_ZIP_TMPL = f"{BASE}/historical/{{fname}}"
 
 OUT_DIR = Path(__file__).parent.parent / "docs" / "data"
-YEARS_HISTORY = 12          # Datenhistorie fuer Tageswerte (deckt "Jahrzehnt" mit Puffer)
+YEARS_HISTORY = 21          # Datenhistorie fuer Tageswerte (deckt Jahrzehnt-vs-Vorjahrzehnt-Vergleich)
 HOURS_RECENT = 72           # Rohstunden fuer die "24h"-Ansicht
 MIN_STATIONS_PER_LAND = 8   # Mindestanzahl Stationen je Bundesland fuer Regionsmittel
 

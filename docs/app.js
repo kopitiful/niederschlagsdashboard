@@ -55,26 +55,33 @@ function lastDate() {
   return parseYMD(db.meta.daily_end);
 }
 
-function rangeDates() {
-  const last = lastDate();
-  switch (state.range) {
-    case "24h":
-      return null; // hourly handled separately
-    case "7d":
-      return [addDays(last, -6), last];
+function shiftYears(d, n) {
+  const r = new Date(d);
+  r.setUTCFullYear(r.getUTCFullYear() - n);
+  return r;
+}
+
+function yearsAgoPlus1(date, n) {
+  const r = shiftYears(date, n);
+  r.setUTCDate(r.getUTCDate() + 1);
+  return r;
+}
+
+function nYearRange(end, n) {
+  return [yearsAgoPlus1(end, n), end];
+}
+
+function presetBounds(kind, last) {
+  switch (kind) {
     case "week": {
       const dow = last.getUTCDay() || 7; // Sun=0 -> 7
-      const monday = addDays(last, -(dow - 1));
-      return [monday, last];
+      return [addDays(last, -(dow - 1)), last];
     }
-    case "month": {
-      const start = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1));
-      return [start, last];
-    }
+    case "month":
+      return [new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1)), last];
     case "halfyear": {
       const half = last.getUTCMonth() < 6 ? 0 : 6;
-      const start = new Date(Date.UTC(last.getUTCFullYear(), half, 1));
-      return [start, last];
+      return [new Date(Date.UTC(last.getUTCFullYear(), half, 1)), last];
     }
     case "season": {
       const m = last.getUTCMonth(); // 0-11
@@ -86,19 +93,26 @@ function rangeDates() {
       else startM = 8;
       return [new Date(Date.UTC(startY, startM, 1)), last];
     }
-    case "year": {
+    case "year":
       return [new Date(Date.UTC(last.getUTCFullYear(), 0, 1)), last];
-    }
-    case "decade": {
-      const start = new Date(last);
-      start.setUTCFullYear(start.getUTCFullYear() - 10);
-      start.setUTCDate(start.getUTCDate() + 1);
-      return [start, last];
-    }
+    case "decade":
+      return nYearRange(last, 10);
+  }
+}
+
+function rangeDates() {
+  const last = lastDate();
+  switch (state.range) {
+    case "24h":
+      return null; // hourly handled separately
+    case "7d":
+      return [addDays(last, -6), last];
     case "custom": {
       if (!state.customFrom || !state.customTo) return null;
       return [parseYMD(state.customFrom), parseYMD(state.customTo)];
     }
+    default:
+      return presetBounds(state.range, last);
   }
 }
 
@@ -232,6 +246,194 @@ function render() {
   drawChart(chartLabels, chartValues);
 }
 
+// Bucketed nach Position-innerhalb-der-Periode statt Kalenderdatum, damit zwei
+// gleich lange Perioden (z.B. dieses vs. voriges Jahr) Bucket-fuer-Bucket
+// nebeneinander vergleichbar sind.
+function bucketizeOffset(sids, from, to) {
+  const dataStart = parseYMD(db.meta.daily_start);
+  const last = lastDate();
+  const clampedFrom = from < dataStart ? dataStart : from;
+  const clampedTo = to > last ? last : to;
+  const totalSpanDays = Math.round((to - from) / 86400000) + 1;
+  if (clampedFrom > clampedTo) return { values: [], total: null, bucketType: null, bucketCount: 0, coverage: 0 };
+
+  const fromIdx = dayIndex(fmtDate(clampedFrom));
+  const toIdx = dayIndex(fmtDate(clampedTo));
+  const series = dailyAverageSeries(sids, fromIdx, toIdx);
+  const validDays = series.filter((v) => v !== null).length;
+  const total = validDays > 0 ? series.reduce((a, b) => a + (b || 0), 0) : null;
+  const coverage = totalSpanDays > 0 ? validDays / totalSpanDays : 0;
+
+  const bucketType = totalSpanDays <= 62 ? "day" : totalSpanDays <= 400 ? "week" : totalSpanDays <= 1500 ? "month" : "year";
+  const bucketSizeDays = { day: 1, week: 7, month: 30, year: 365.25 }[bucketType];
+  const offsetStart = Math.round((clampedFrom - from) / 86400000);
+
+  const sums = new Map();
+  for (let i = 0; i < series.length; i++) {
+    const bIdx = Math.floor((offsetStart + i) / bucketSizeDays);
+    if (!sums.has(bIdx)) sums.set(bIdx, { sum: 0, has: false });
+    const b = sums.get(bIdx);
+    if (series[i] !== null) { b.sum += series[i]; b.has = true; }
+  }
+  const bucketCount = Math.floor((totalSpanDays - 1) / bucketSizeDays) + 1;
+  const values = [];
+  for (let b = 0; b < bucketCount; b++) {
+    const bucket = sums.get(b);
+    values.push(bucket && bucket.has ? Math.round(bucket.sum * 10) / 10 : null);
+  }
+  return { values, total, bucketType, bucketCount, coverage };
+}
+
+function bucketLabel(type, i) {
+  const names = { day: "Tag", week: "Wo", month: "Monat", year: "Jahr" };
+  return `${names[type] || "#"} ${i + 1}`;
+}
+
+let compareState = { kind: "month", years: 5 };
+let compareChart;
+
+function clampYears(n) {
+  n = Math.round(Number(n));
+  if (!Number.isFinite(n)) n = 5;
+  return Math.max(1, Math.min(15, n));
+}
+
+function compareBounds() {
+  const last = lastDate();
+  if (compareState.kind === "decade") {
+    return { current: nYearRange(last, 10), prior: nYearRange(shiftYears(last, 10), 10) };
+  }
+  if (compareState.kind === "nyears") {
+    const n = clampYears(compareState.years);
+    return { current: nYearRange(last, n), prior: nYearRange(shiftYears(last, n), n) };
+  }
+  const current = presetBounds(compareState.kind, last);
+  const prior = [shiftYears(current[0], 1), shiftYears(current[1], 1)];
+  return { current, prior };
+}
+
+function compareSeriesLabels() {
+  if (compareState.kind === "decade") return ["Letzte 10 Jahre", "Die 10 Jahre davor"];
+  if (compareState.kind === "nyears") {
+    const n = clampYears(compareState.years);
+    return [`Letzte ${n} Jahre`, `Die ${n} Jahre davor`];
+  }
+  const names = { month: "Monat", season: "Saison", year: "Jahr" };
+  return [`${names[compareState.kind]} aktuell`, `${names[compareState.kind]} Vorjahr`];
+}
+
+function fmtRangeShort(range) {
+  return `${range[0].toLocaleDateString("de-DE")} – ${range[1].toLocaleDateString("de-DE")}`;
+}
+
+function renderCompare() {
+  const sids = stationsForScope();
+  const elCur = document.getElementById("cmpCurrentValue");
+  const elPrior = document.getElementById("cmpPriorValue");
+  const elCurLabel = document.getElementById("cmpCurrentLabel");
+  const elPriorLabel = document.getElementById("cmpPriorLabel");
+  const elDelta = document.getElementById("cmpDelta");
+
+  if (!sids.length) {
+    elCur.textContent = "–";
+    elPrior.textContent = "–";
+    elDelta.textContent = "–";
+    document.getElementById("cmpCoverageNote").classList.add("hidden");
+    return;
+  }
+
+  const { current, prior } = compareBounds();
+  const [curLabel, priorLabel] = compareSeriesLabels();
+  const curB = bucketizeOffset(sids, current[0], current[1]);
+  const priorB = bucketizeOffset(sids, prior[0], prior[1]);
+  const minCoverage = Math.min(curB.coverage, priorB.coverage);
+
+  elCur.textContent = fmtMM(curB.total);
+  elPrior.textContent = fmtMM(priorB.total);
+  elCurLabel.textContent = `${curLabel} · ${fmtRangeShort(current)}`;
+  elPriorLabel.textContent = `${priorLabel} · ${fmtRangeShort(prior)}`;
+
+  if (minCoverage < 0.5) {
+    elDelta.textContent = "–";
+  } else if (curB.total !== null && priorB.total !== null && priorB.total !== 0) {
+    const delta = ((curB.total - priorB.total) / priorB.total) * 100;
+    elDelta.textContent = (delta >= 0 ? "+" : "−") + Math.abs(delta).toFixed(0) + " %";
+  } else {
+    elDelta.textContent = "–";
+  }
+
+  const coverageNote = document.getElementById("cmpCoverageNote");
+  if (minCoverage < 0.98) {
+    const pct = Math.round(minCoverage * 100);
+    coverageNote.textContent = minCoverage < 0.5
+      ? `Zu wenig Daten für diesen Vergleich (nur ${pct}% Abdeckung) – vermutlich ist die Station für einen Teil des Zeitraums noch nicht aktiv gewesen.`
+      : `Hinweis: unvollständige Datenabdeckung für diesen Zeitraum (${pct}%) – Vergleich mit Vorsicht interpretieren.`;
+    coverageNote.classList.remove("hidden");
+  } else {
+    coverageNote.classList.add("hidden");
+  }
+
+  const bucketType = curB.bucketType || priorB.bucketType;
+  const n = Math.max(curB.bucketCount, priorB.bucketCount);
+  const labels = [];
+  for (let i = 0; i < n; i++) labels.push(bucketLabel(bucketType, i));
+  drawCompareChart(labels, curB.values, priorB.values, [curLabel, priorLabel]);
+}
+
+function drawCompareChart(labels, curValues, priorValues, seriesLabels) {
+  const ctx = document.getElementById("compareChart").getContext("2d");
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const gridColor = isDark ? "#2a2c30" : "#eee";
+  const curColor = isDark ? "#5b9bff" : "#2563eb";
+  const priorColor = isDark ? "#4b4f57" : "#c7ccd4";
+  const textColor = isDark ? "#9aa0a6" : "#6b7280";
+
+  if (compareChart) compareChart.destroy();
+  compareChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: seriesLabels[0], data: curValues, backgroundColor: curColor, borderRadius: 3, maxBarThickness: 20 },
+        { label: seriesLabels[1], data: priorValues, backgroundColor: priorColor, borderRadius: 3, maxBarThickness: 20 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: textColor, boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmtMM(c.raw)} mm` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: textColor, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: gridColor }, ticks: { color: textColor }, title: { display: true, text: "mm", color: textColor } },
+      },
+    },
+  });
+}
+
+function setupCompareControls() {
+  const buttons = document.querySelectorAll(".cmp-ranges button");
+  const yearsWrap = document.getElementById("cmpYearsWrap");
+  const yearsInput = document.getElementById("cmpYears");
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      compareState.kind = btn.dataset.cmp;
+      yearsWrap.classList.toggle("hidden", compareState.kind !== "nyears");
+      renderCompare();
+    });
+  });
+
+  yearsInput.addEventListener("input", () => {
+    compareState.years = clampYears(yearsInput.value);
+    renderCompare();
+  });
+}
+
 function isoWeek(d) {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = date.getUTCDay() || 7;
@@ -284,11 +486,12 @@ function setupControls() {
       citySel.classList.toggle("hidden", state.scope !== "stadt");
       landSel.classList.toggle("hidden", state.scope !== "bundesland");
       render();
+      renderCompare();
     });
   });
 
-  citySel.addEventListener("change", () => { state.city = citySel.value; render(); });
-  landSel.addEventListener("change", () => { state.bundesland = landSel.value; render(); });
+  citySel.addEventListener("change", () => { state.city = citySel.value; render(); renderCompare(); });
+  landSel.addEventListener("change", () => { state.bundesland = landSel.value; render(); renderCompare(); });
 
   rangeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -356,7 +559,9 @@ async function init() {
 
   populateSelects();
   setupControls();
+  setupCompareControls();
   render();
+  renderCompare();
 }
 
 init();

@@ -159,6 +159,77 @@ select, input[type="date"] {
   color: var(--muted);
   border-top: 1px solid var(--line);
   padding-top: 14px;
+  margin-bottom: 8px;
+}
+
+h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 32px 0 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+
+.cmp-years {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.cmp-years input {
+  width: 60px;
+  text-align: center;
+  margin: 0 6px;
+}
+
+.cmp-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 8px 0 4px;
+  flex-wrap: wrap;
+}
+
+.cmp-stat {
+  text-align: center;
+  min-width: 140px;
+}
+
+.cmp-stat .value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cmp-stat .unit {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.cmp-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.cmp-delta {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+.coverage-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 12px;
 }
 
 footer {
