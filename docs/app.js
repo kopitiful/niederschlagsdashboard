@@ -419,25 +419,56 @@ function colorForOffset(offset, maxOffset, isDark) {
   return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
 }
 
+function averageAcrossSeries(series, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let sum = 0, count = 0;
+    for (const s of series) {
+      const v = s.values[i];
+      if (v !== null && v !== undefined) { sum += v; count++; }
+    }
+    out.push(count > 0 ? Math.round((sum / count) * 10) / 10 : null);
+  }
+  return out;
+}
+
 function drawCompareChart(labels, series) {
   const ctx = document.getElementById("compareChart").getContext("2d");
   const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const gridColor = isDark ? "#2a2c30" : "#eee";
   const textColor = isDark ? "#9aa0a6" : "#6b7280";
   const maxOffset = Math.max(1, series.length - 1);
+  const avgValues = averageAcrossSeries(series, labels.length);
 
   if (compareChart) compareChart.destroy();
   compareChart = new Chart(ctx, {
     type: "bar",
     data: {
       labels,
-      datasets: series.map((s, i) => ({
-        label: s.label,
-        data: s.values,
-        backgroundColor: colorForOffset(i, maxOffset, isDark),
-        borderRadius: 3,
-        maxBarThickness: 20,
-      })),
+      datasets: [
+        ...series.map((s, i) => ({
+          label: s.label,
+          data: s.values,
+          backgroundColor: colorForOffset(i, maxOffset, isDark),
+          borderRadius: 3,
+          maxBarThickness: 20,
+          order: 1,
+        })),
+        {
+          type: "line",
+          label: "Durchschnitt",
+          data: avgValues,
+          borderColor: "#e02424",
+          backgroundColor: "#e02424",
+          borderWidth: 2,
+          pointRadius: 2,
+          pointBackgroundColor: "#e02424",
+          fill: false,
+          tension: 0.2,
+          spanGaps: true,
+          order: 0,
+        },
+      ],
     },
     options: {
       responsive: true,
