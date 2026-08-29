@@ -355,6 +355,8 @@ function renderCompare() {
     elPrior.textContent = "–";
     elDelta.textContent = "–";
     document.getElementById("cmpCoverageNote").classList.add("hidden");
+    document.querySelector("#compareTable thead").replaceChildren();
+    document.querySelector("#compareTable tbody").replaceChildren();
     renderExtraPills();
     return;
   }
@@ -407,7 +409,9 @@ function renderCompare() {
     { label: priorLabel, values: priorB.values },
     ...extraSeries,
   ];
-  drawCompareChart(labels, series);
+  const avgValues = averageAcrossSeries(series, labels.length);
+  drawCompareChart(labels, series, avgValues);
+  renderCompareTable(labels, series, avgValues);
   renderExtraPills();
 }
 
@@ -432,13 +436,52 @@ function averageAcrossSeries(series, n) {
   return out;
 }
 
-function drawCompareChart(labels, series) {
+function renderCompareTable(labels, series, avgValues) {
+  const thead = document.querySelector("#compareTable thead");
+  const tbody = document.querySelector("#compareTable tbody");
+
+  const headRow = document.createElement("tr");
+  headRow.appendChild(el("th", "Zeitraum"));
+  series.forEach((s) => headRow.appendChild(el("th", s.label)));
+  headRow.appendChild(el("th", "Durchschnitt", "avg-col"));
+  thead.replaceChildren(headRow);
+
+  const rows = labels.map((label, i) => {
+    const tr = document.createElement("tr");
+    tr.appendChild(el("td", label));
+    series.forEach((s) => tr.appendChild(el("td", fmtMM(s.values[i]))));
+    tr.appendChild(el("td", fmtMM(avgValues[i]), "avg-col"));
+    return tr;
+  });
+  tbody.replaceChildren(...rows);
+
+  const totalRow = document.createElement("tr");
+  totalRow.className = "total-row";
+  totalRow.appendChild(el("td", "Summe"));
+  series.forEach((s) => {
+    const has = s.values.some((v) => v !== null);
+    const sum = has ? s.values.reduce((a, b) => a + (b || 0), 0) : null;
+    totalRow.appendChild(el("td", fmtMM(sum)));
+  });
+  const avgHas = avgValues.some((v) => v !== null);
+  const avgSum = avgHas ? avgValues.reduce((a, b) => a + (b || 0), 0) : null;
+  totalRow.appendChild(el("td", fmtMM(avgSum), "avg-col"));
+  tbody.appendChild(totalRow);
+}
+
+function el(tag, text, className) {
+  const e = document.createElement(tag);
+  e.textContent = text;
+  if (className) e.className = className;
+  return e;
+}
+
+function drawCompareChart(labels, series, avgValues) {
   const ctx = document.getElementById("compareChart").getContext("2d");
   const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const gridColor = isDark ? "#2a2c30" : "#eee";
   const textColor = isDark ? "#9aa0a6" : "#6b7280";
   const maxOffset = Math.max(1, series.length - 1);
-  const avgValues = averageAcrossSeries(series, labels.length);
 
   if (compareChart) compareChart.destroy();
   compareChart = new Chart(ctx, {

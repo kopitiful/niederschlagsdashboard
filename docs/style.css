@@ -278,6 +278,58 @@ h2 {
   color: var(--accent);
 }
 
+.table-wrap {
+  overflow-x: auto;
+  margin: 4px 0 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+#compareTable {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+#compareTable th,
+#compareTable td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+
+#compareTable th:first-child,
+#compareTable td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+}
+
+#compareTable thead th {
+  color: var(--muted);
+  font-weight: 600;
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+
+#compareTable thead th:first-child {
+  z-index: 1;
+}
+
+#compareTable .avg-col {
+  color: #e02424;
+  font-weight: 600;
+}
+
+#compareTable .total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+  border-bottom: none;
+}
+
 .coverage-note {
   font-size: 0.78rem;
   color: var(--muted);
