@@ -289,8 +289,9 @@ function bucketLabel(type, i) {
   return `${names[type] || "#"} ${i + 1}`;
 }
 
-let compareState = { kind: "month", years: 5 };
+let compareState = { kind: "month", years: 5, extra: new Set() };
 let compareChart;
+const MAX_EXTRA = 20;
 
 function clampYears(n) {
   n = Math.round(Number(n));
@@ -298,18 +299,33 @@ function clampYears(n) {
   return Math.max(1, Math.min(15, n));
 }
 
-function compareBounds() {
+// offsetUnits 0 = aktuelle Periode, 1 = Vorperiode (Vorjahr/Vorjahrzehnt/...),
+// 2+ = zusaetzliche Perioden weiter zurueck, in derselben Einheit wie die Vorperiode.
+function periodForOffset(kind, offsetUnits) {
   const last = lastDate();
-  if (compareState.kind === "decade") {
-    return { current: nYearRange(last, 10), prior: nYearRange(shiftYears(last, 10), 10) };
-  }
-  if (compareState.kind === "nyears") {
+  if (kind === "decade") return nYearRange(shiftYears(last, offsetUnits * 10), 10);
+  if (kind === "nyears") {
     const n = clampYears(compareState.years);
-    return { current: nYearRange(last, n), prior: nYearRange(shiftYears(last, n), n) };
+    return nYearRange(shiftYears(last, offsetUnits * n), n);
   }
-  const current = presetBounds(compareState.kind, last);
-  const prior = [shiftYears(current[0], 1), shiftYears(current[1], 1)];
-  return { current, prior };
+  const base = presetBounds(kind, last);
+  return [shiftYears(base[0], offsetUnits), shiftYears(base[1], offsetUnits)];
+}
+
+function compareBounds() {
+  return { current: periodForOffset(compareState.kind, 0), prior: periodForOffset(compareState.kind, 1) };
+}
+
+function extraUnitLabel() {
+  if (compareState.kind === "decade") return "Jahrzehnte";
+  if (compareState.kind === "nyears") return `${clampYears(compareState.years)}-Jahres-Zeiträume`;
+  return "Jahre";
+}
+
+function periodLegendLabel(kind, offsetUnits, range) {
+  if (offsetUnits === 0 || offsetUnits === 1) return compareSeriesLabels()[offsetUnits];
+  if (kind === "decade" || kind === "nyears") return `${range[0].getUTCFullYear()}–${range[1].getUTCFullYear()}`;
+  return String(range[1].getUTCFullYear());
 }
 
 function compareSeriesLabels() {
@@ -339,6 +355,7 @@ function renderCompare() {
     elPrior.textContent = "–";
     elDelta.textContent = "–";
     document.getElementById("cmpCoverageNote").classList.add("hidden");
+    renderExtraPills();
     return;
   }
 
@@ -373,30 +390,54 @@ function renderCompare() {
     coverageNote.classList.add("hidden");
   }
 
+  const extraOffsets = [...compareState.extra].sort((a, b) => a - b).map((k) => k + 1);
+  const extraSeries = extraOffsets.map((offset) => {
+    const range = periodForOffset(compareState.kind, offset);
+    const b = bucketizeOffset(sids, range[0], range[1]);
+    return { label: periodLegendLabel(compareState.kind, offset, range), values: b.values, bucketCount: b.bucketCount, bucketType: b.bucketType };
+  });
+
   const bucketType = curB.bucketType || priorB.bucketType;
-  const n = Math.max(curB.bucketCount, priorB.bucketCount);
+  const n = Math.max(curB.bucketCount, priorB.bucketCount, ...extraSeries.map((s) => s.bucketCount));
   const labels = [];
   for (let i = 0; i < n; i++) labels.push(bucketLabel(bucketType, i));
-  drawCompareChart(labels, curB.values, priorB.values, [curLabel, priorLabel]);
+
+  const series = [
+    { label: curLabel, values: curB.values },
+    { label: priorLabel, values: priorB.values },
+    ...extraSeries,
+  ];
+  drawCompareChart(labels, series);
+  renderExtraPills();
 }
 
-function drawCompareChart(labels, curValues, priorValues, seriesLabels) {
+function colorForOffset(offset, maxOffset, isDark) {
+  const c0 = isDark ? [91, 155, 255] : [37, 99, 235];
+  const c1 = isDark ? [58, 61, 66] : [223, 227, 232];
+  const t = maxOffset > 0 ? Math.min(1, offset / maxOffset) : 0;
+  const mix = c0.map((v, i) => Math.round(v + (c1[i] - v) * t));
+  return `rgb(${mix[0]},${mix[1]},${mix[2]})`;
+}
+
+function drawCompareChart(labels, series) {
   const ctx = document.getElementById("compareChart").getContext("2d");
   const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const gridColor = isDark ? "#2a2c30" : "#eee";
-  const curColor = isDark ? "#5b9bff" : "#2563eb";
-  const priorColor = isDark ? "#4b4f57" : "#c7ccd4";
   const textColor = isDark ? "#9aa0a6" : "#6b7280";
+  const maxOffset = Math.max(1, series.length - 1);
 
   if (compareChart) compareChart.destroy();
   compareChart = new Chart(ctx, {
     type: "bar",
     data: {
       labels,
-      datasets: [
-        { label: seriesLabels[0], data: curValues, backgroundColor: curColor, borderRadius: 3, maxBarThickness: 20 },
-        { label: seriesLabels[1], data: priorValues, backgroundColor: priorColor, borderRadius: 3, maxBarThickness: 20 },
-      ],
+      datasets: series.map((s, i) => ({
+        label: s.label,
+        data: s.values,
+        backgroundColor: colorForOffset(i, maxOffset, isDark),
+        borderRadius: 3,
+        maxBarThickness: 20,
+      })),
     },
     options: {
       responsive: true,
@@ -413,16 +454,43 @@ function drawCompareChart(labels, curValues, priorValues, seriesLabels) {
   });
 }
 
+function renderExtraPills() {
+  const label = document.getElementById("cmpExtraLabel");
+  label.textContent = `Weitere ${extraUnitLabel()} vergleichen:`;
+
+  const pillsWrap = document.getElementById("cmpExtraPills");
+  if (pillsWrap.childElementCount !== MAX_EXTRA) {
+    pillsWrap.innerHTML = "";
+    for (let k = 1; k <= MAX_EXTRA; k++) {
+      const btn = document.createElement("button");
+      btn.textContent = "+" + k;
+      btn.dataset.k = k;
+      btn.addEventListener("click", () => {
+        if (compareState.extra.has(k)) compareState.extra.delete(k);
+        else compareState.extra.add(k);
+        renderCompare();
+      });
+      pillsWrap.appendChild(btn);
+    }
+  }
+  [...pillsWrap.children].forEach((btn) => {
+    btn.classList.toggle("active", compareState.extra.has(Number(btn.dataset.k)));
+  });
+}
+
 function setupCompareControls() {
   const buttons = document.querySelectorAll(".cmp-ranges button");
   const yearsWrap = document.getElementById("cmpYearsWrap");
   const yearsInput = document.getElementById("cmpYears");
+  const extraToggle = document.getElementById("cmpExtraToggle");
+  const extraPanel = document.getElementById("cmpExtraPanel");
 
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       buttons.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       compareState.kind = btn.dataset.cmp;
+      compareState.extra.clear();
       yearsWrap.classList.toggle("hidden", compareState.kind !== "nyears");
       renderCompare();
     });
@@ -430,7 +498,12 @@ function setupCompareControls() {
 
   yearsInput.addEventListener("input", () => {
     compareState.years = clampYears(yearsInput.value);
+    compareState.extra.clear();
     renderCompare();
+  });
+
+  extraToggle.addEventListener("click", () => {
+    extraPanel.classList.toggle("hidden");
   });
 }
 

@@ -222,6 +222,62 @@ h2 {
   padding: 6px 14px;
 }
 
+.cmp-extra-toggle-row {
+  text-align: center;
+  margin: 4px 0 4px;
+}
+
+.cmp-extra-toggle {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.cmp-extra-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.cmp-extra-panel {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.cmp-extra-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.cmp-extra-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+}
+
+.cmp-extra-pills button {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.cmp-extra-pills button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .coverage-note {
   font-size: 0.78rem;
   color: var(--muted);
