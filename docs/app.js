@@ -294,7 +294,7 @@ function bucketizeOffset(sids, from, to) {
   const total = validDays > 0 ? series.reduce((a, b) => a + (b || 0), 0) : null;
   const coverage = totalSpanDays > 0 ? validDays / totalSpanDays : 0;
 
-  const bucketType = totalSpanDays <= 62 ? "day" : totalSpanDays <= 400 ? "week" : totalSpanDays <= 1500 ? "month" : "year";
+  const bucketType = totalSpanDays <= 62 ? "day" : totalSpanDays <= 100 ? "week" : totalSpanDays <= 1500 ? "month" : "year";
   const bucketSizeDays = { day: 1, week: 7, month: 30, year: 365.25 }[bucketType];
   const offsetStart = Math.round((clampedFrom - from) / 86400000);
 
@@ -314,7 +314,10 @@ function bucketizeOffset(sids, from, to) {
   return { values, total, bucketType, bucketCount, coverage };
 }
 
-function bucketLabel(type, i) {
+function bucketLabel(type, i, kind) {
+  // Beim Jahresvergleich beginnen beide Perioden am 1. Januar, daher lassen
+  // sich Monats-Buckets direkt als Kalendermonate benennen statt generisch.
+  if (type === "month" && kind === "year") return MONTHS[i % 12];
   const names = { day: "Tag", week: "Wo", month: "Monat", year: "Jahr" };
   return `${names[type] || "#"} ${i + 1}`;
 }
@@ -436,7 +439,7 @@ function renderCompare() {
   const bucketType = curB.bucketType || priorB.bucketType;
   const n = Math.max(curB.bucketCount, priorB.bucketCount, ...extraSeries.map((s) => s.bucketCount));
   const labels = [];
-  for (let i = 0; i < n; i++) labels.push(bucketLabel(bucketType, i));
+  for (let i = 0; i < n; i++) labels.push(bucketLabel(bucketType, i, compareState.kind));
 
   const series = [
     { label: curLabel, values: curB.values },
