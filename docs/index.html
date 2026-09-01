@@ -3,22 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Niederschlag Deutschland</title>
+  <title>Niederschlag Europa</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="wrap">
-    <h1>Niederschlag Deutschland</h1>
-    <div class="sub" id="footerInfoTop">Daten des Deutschen Wetterdienstes (DWD Open Data)</div>
+    <h1>Niederschlag Deutschland &amp; Frankreich</h1>
+    <div class="sub" id="footerInfoTop">Daten des Deutschen Wetterdienstes (DWD) &amp; von Météo-France (Open Data)</div>
 
     <div class="controls">
-      <div class="scope-toggle">
+      <div class="scope-toggle" id="countryToggle">
+        <button data-country="DE" class="active">Deutschland</button>
+        <button data-country="FR">Frankreich</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="scope-toggle" id="levelToggle">
         <button data-scope="stadt" class="active">Stadt</button>
-        <button data-scope="bundesland">Bundesland</button>
-        <button data-scope="deutschland">Deutschland</button>
+        <button data-scope="region">Bundesland</button>
+        <button data-scope="land">Deutschland</button>
       </div>
       <select id="citySelect"></select>
-      <select id="landSelect" class="hidden"></select>
+      <select id="regionSelect" class="hidden"></select>
     </div>
 
     <div class="ranges">

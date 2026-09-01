@@ -3,16 +3,17 @@ const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", 
 const MONTHS_FULL = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
 let state = {
-  scope: "stadt",
+  country: "DE", // "DE" oder "FR"
+  scope: "stadt", // "stadt" | "region" (Bundesland/Departement) | "land" (ganzes Land)
   city: null,
-  bundesland: null,
+  region: null,
   range: "7d",
   month: null, // null = aktueller Monat
   customFrom: null,
   customTo: null,
 };
 
-let db = {}; // meta, stations, cities, bundeslaender, daily, hourly
+let db = {}; // meta, stations, cities, regions, daily, hourly
 
 async function loadJSON(name) {
   const r = await fetch(DATA + name, { cache: "no-cache" });
@@ -41,16 +42,27 @@ function dayIndex(dateStr) {
 }
 
 function stationsForScope() {
-  if (state.scope === "stadt" && state.city) return [db.cities[state.city]];
-  if (state.scope === "bundesland" && state.bundesland) return db.bundeslaender[state.bundesland] || [];
-  if (state.scope === "deutschland") return Object.keys(db.stations);
+  if (state.scope === "stadt" && state.city) {
+    const sid = (db.citiesByCountry[state.country] || {})[state.city];
+    return sid ? [sid] : [];
+  }
+  if (state.scope === "region" && state.region) {
+    return (db.regions[state.country] && db.regions[state.country][state.region]) || [];
+  }
+  if (state.scope === "land") {
+    return Object.keys(db.stations).filter((sid) => db.stations[sid].country === state.country);
+  }
   return [];
+}
+
+function countryName(country) {
+  return country === "FR" ? "Frankreich" : "Deutschland";
 }
 
 function scopeLabel() {
   if (state.scope === "stadt") return state.city || "";
-  if (state.scope === "bundesland") return state.bundesland || "";
-  return "Deutschland";
+  if (state.scope === "region") return state.region || "";
+  return countryName(state.country);
 }
 
 function lastDate() {
@@ -647,13 +659,41 @@ function drawChart(labels, values) {
 }
 
 function setupControls() {
-  const scopeButtons = document.querySelectorAll(".scope-toggle button");
+  const countryButtons = document.querySelectorAll("#countryToggle button");
+  const scopeButtons = document.querySelectorAll("#levelToggle button");
   const citySel = document.getElementById("citySelect");
-  const landSel = document.getElementById("landSelect");
+  const regionSel = document.getElementById("regionSelect");
   const rangeButtons = document.querySelectorAll(".ranges button");
   const fromInput = document.getElementById("fromDate");
   const toInput = document.getElementById("toDate");
   const monthSel = document.getElementById("monthSelect");
+  const range24h = document.querySelector('.ranges button[data-range="24h"]');
+
+  function updateCountryLabels() {
+    const isFR = state.country === "FR";
+    document.querySelector('#levelToggle button[data-scope="region"]').textContent = isFR ? "Département" : "Bundesland";
+    document.querySelector('#levelToggle button[data-scope="land"]').textContent = countryName(state.country);
+  }
+
+  countryButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      countryButtons.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.country = btn.dataset.country;
+      updateCountryLabels();
+      populateCitySelect();
+      populateRegionSelect();
+      range24h.classList.toggle("hidden", state.country === "FR");
+      if (state.country === "FR" && state.range === "24h") {
+        rangeButtons.forEach((b) => b.classList.remove("active"));
+        document.querySelector('.ranges button[data-range="7d"]').classList.add("active");
+        state.range = "7d";
+      }
+      render();
+      renderCompare();
+    });
+  });
+  updateCountryLabels();
 
   scopeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -661,14 +701,14 @@ function setupControls() {
       btn.classList.add("active");
       state.scope = btn.dataset.scope;
       citySel.classList.toggle("hidden", state.scope !== "stadt");
-      landSel.classList.toggle("hidden", state.scope !== "bundesland");
+      regionSel.classList.toggle("hidden", state.scope !== "region");
       render();
       renderCompare();
     });
   });
 
   citySel.addEventListener("change", () => { state.city = citySel.value; render(); renderCompare(); });
-  landSel.addEventListener("change", () => { state.bundesland = landSel.value; render(); renderCompare(); });
+  regionSel.addEventListener("change", () => { state.region = regionSel.value; render(); renderCompare(); });
 
   rangeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -698,25 +738,37 @@ function setupControls() {
   });
 }
 
-function populateSelects() {
+function populateCitySelect() {
   const citySel = document.getElementById("citySelect");
-  const landSel = document.getElementById("landSelect");
-
-  Object.keys(db.cities).sort((a, b) => a.localeCompare(b, "de")).forEach((name) => {
+  citySel.innerHTML = "";
+  const names = Object.keys(db.citiesByCountry[state.country] || {})
+    .sort((a, b) => a.localeCompare(b, state.country === "FR" ? "fr" : "de"));
+  names.forEach((name) => {
     const opt = document.createElement("option");
     opt.value = name;
     opt.textContent = name;
     citySel.appendChild(opt);
   });
-  state.city = citySel.value;
+  state.city = citySel.value || null;
+}
 
-  Object.keys(db.bundeslaender).sort((a, b) => a.localeCompare(b, "de")).forEach((name) => {
+function populateRegionSelect() {
+  const regionSel = document.getElementById("regionSelect");
+  regionSel.innerHTML = "";
+  const names = Object.keys(db.regions[state.country] || {})
+    .sort((a, b) => a.localeCompare(b, state.country === "FR" ? "fr" : "de"));
+  names.forEach((name) => {
     const opt = document.createElement("option");
     opt.value = name;
     opt.textContent = name;
-    landSel.appendChild(opt);
+    regionSel.appendChild(opt);
   });
-  state.bundesland = landSel.options[0] ? landSel.options[0].value : null;
+  state.region = regionSel.options[0] ? regionSel.options[0].value : null;
+}
+
+function populateSelects() {
+  populateCitySelect();
+  populateRegionSelect();
 
   const maxD = db.meta.daily_end;
   const minD = db.meta.daily_start;
@@ -739,18 +791,20 @@ function populateSelects() {
 }
 
 async function init() {
-  const [meta, stations, cities, bundeslaender, daily, hourly] = await Promise.all([
+  const [meta, stations, cities, regions, daily, hourly] = await Promise.all([
     loadJSON("meta.json"),
     loadJSON("stations.json"),
     loadJSON("cities.json"),
-    loadJSON("bundeslaender.json"),
+    loadJSON("regions.json"),
     loadJSON("daily.json"),
     loadJSON("hourly_recent.json"),
   ]);
-  db = { meta, stations, cities, bundeslaender, daily, hourly };
+  const citiesByCountry = { DE: {}, FR: {} };
+  cities.forEach((c) => { citiesByCountry[c.country][c.name] = c.stationId; });
+  db = { meta, stations, cities, citiesByCountry, regions, daily, hourly };
 
   document.getElementById("footerInfo").textContent =
-    `Quelle: Deutscher Wetterdienst (Open Data), ${meta.n_stations} Stationen · zuletzt aktualisiert ${new Date(meta.generated_at).toLocaleString("de-DE")}`;
+    `Quelle: Deutscher Wetterdienst & Météo-France (Open Data), ${meta.n_stations_de ?? "?"} DE- + ${meta.n_stations_fr ?? "?"} FR-Stationen · zuletzt aktualisiert ${new Date(meta.generated_at).toLocaleString("de-DE")}`;
 
   populateSelects();
   setupControls();
